@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>1D Constant Speed Practice</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body dir="rtl">
+    <main>
+      <section class="quiz-card" aria-live="polite">
+        <div class="quiz-header">
+          <div class="stats" aria-live="polite">
+            <span id="correct-count" class="stat-pill"></span>
+            <span id="streak-count" class="stat-pill"></span>
+          </div>
+        </div>
+
+        <div id="representation" class="representation" role="img" aria-label="דוגמה לייצוג תנועה"></div>
+
+        <p id="prompt" class="prompt"></p>
+
+        <div id="options" class="options"></div>
+
+        <div class="actions">
+          <button id="submit-answer" class="primary">בדוק תשובה</button>
+        </div>
+
+        <p id="feedback" class="feedback" aria-live="assertive"></p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
