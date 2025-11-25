@@ -199,13 +199,10 @@ const alternateUnits = {
     { multiplier: 60, label: "m/min" },
   ],
   distance: [
-    { multiplier: 0.001, label: "km" },
-    { multiplier: 0.01, label: "cm" },
-    { multiplier: 1000, label: "mm" },
+    { multiplier: 100, label: "cm" },
   ],
   time: [
     { multiplier: 1 / 60, label: "min" },
-    { multiplier: 1 / 3600, label: "hr" },
   ],
 };
 
