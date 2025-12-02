@@ -760,7 +760,7 @@ const xtEquationPositionQuestion = () => {
     representation: buildEquationRepresentation(velocity, intercept),
     prompt: `נתונה משוואת מיקום-זמן של גוף בתנועה קבועה. מה מיקום הגוף בזמן t=${sampleTime}s?`,
     correctAnswer: { value: position, unit: "m" },
-    explanation: `${equationText} → x(${sampleTime}) = ${velocity}·${sampleTime} + ${intercept} = ${position} m.`,
+    explanation: `${equationText} → x(${sampleTime}) = ${velocity}·${sampleTime} ${intercept >= 0 ? '+' : '-'} ${Math.abs(intercept)} = ${position} m.`,
   };
 };
 
@@ -829,7 +829,7 @@ const vtGraphPositionEquationQuestion = () => {
     prompt: `גרף v/t מראה תנועה קבועה. ידוע כי x=${positionAtTime}m בזמן t=${referenceTime} s. מה משוואת התנועה המתאימה?`,
     correctAnswer: { value: correctOption.text, unit: "equation", text: correctOption.text },
     fixedOptions: options,
-    explanation: `x(t) = ${velocity}·t + x₀, ובזמן ${referenceTime} מתקבל ${positionAtTime} → x₀=${intercept} → ${correctOption.text}.`,
+    explanation: `${formatEquation(velocity, intercept)}, ובזמן ${referenceTime} מתקבל ${positionAtTime} → x₀=${intercept} → ${correctOption.text}.`,
   };
 };
 
