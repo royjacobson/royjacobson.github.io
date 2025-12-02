@@ -48,6 +48,9 @@ const resolveUnit = (option, question) => option.displayUnit || question.answerU
 
 const formatOption = (option, question) => {
   if (option.text) {
+    if (option.latex) {
+      return `\\(${option.latex}\\)`;
+    }
     return option.text;
   }
   const unitInfo = resolveUnit(option, question);
@@ -145,6 +148,11 @@ const scaleRepresentation = (representation, factor, label) => {
         representation.yTicks = representation.yTicks.map((tick) => tick * factor);
       }
       break;
+    case "xt-equation":
+      representation.velocity *= factor;
+      representation.intercept *= factor;
+      representation.distanceLabel = label.replace(/.*\(([^)]+)\).*/, "$1").trim() || label;
+      break;
     default:
       break;
   }
@@ -187,6 +195,10 @@ const scaleRepresentationTime = (representation, factor, label) => {
       }));
       representation.maxTime *= factor;
       break;
+    case "xt-equation":
+      representation.velocity /= factor || 1;
+      representation.timeLabel = label.replace(/.*\(([^)]+)\).*/, "$1").trim() || label;
+      break;
     default:
       break;
   }
@@ -219,6 +231,38 @@ const optionKey = (option) => {
   const unitLabel = option.displayUnit?.label || option.unit;
   return `${option.text || ""}|${unitLabel}|${option.value}`;
 };
+
+const formatEquation = ({ velocity, intercept, distanceLabel = "m", timeLabel = "s" }) => {
+  const vText = formatNumber(velocity);
+  const x0Text = formatNumber(Math.abs(intercept));
+  const sign = intercept >= 0 ? "+" : "-";
+  const velocityUnit = `${distanceLabel}/${timeLabel}`;
+  return `x(t) = ${vText} ${velocityUnit} · t ${sign} ${x0Text} ${distanceLabel}`;
+};
+
+const formatEquationLatex = ({ velocity, intercept, distanceLabel = "m", timeLabel = "s" }) => {
+  const vText = formatNumber(velocity);
+  const absX0 = formatNumber(Math.abs(intercept));
+  const sign = intercept >= 0 ? "+" : "-";
+  const velocityTerm = `${vText}\\,\\frac{${distanceLabel}}{${timeLabel}}`;
+  const interceptTerm = `${absX0}\\,${distanceLabel}`;
+  return `x(t)=${velocityTerm}\\,t\\,${sign}\\,${interceptTerm}`;
+};
+
+const createEquationOption = ({ velocity, intercept, distanceLabel = "m", timeLabel = "s", isCorrect = false }) => {
+  const base = { velocity, intercept, distanceLabel, timeLabel };
+  const text = formatEquation(base);
+  const latex = formatEquationLatex(base);
+  return { value: text, unit: "equation", text, latex, isCorrect };
+};
+
+const buildEquationRepresentation = (velocity, intercept, distanceLabel = "m", timeLabel = "s") => ({
+  type: "xt-equation",
+  velocity,
+  intercept,
+  distanceLabel,
+  timeLabel,
+});
 
 const generateNumericDistractors = (correctOption, question, existingOptions = []) => {
   const distractors = [];
@@ -432,7 +476,7 @@ const tableAverageSpeedQuestion = () => {
     representation: { type: "table", headers: ["t (s)", "x (m)"], rows },
     prompt: "על פי טבלת המיקום-זמן שלפניכם, מה המהירות הממוצעת של הגוף?",
     correctAnswer: { value: averageSpeed, unit: "m/s" },
-    explanation: `המרחק הכולל ${distance} מטרים בשלוש שניות → ${averageSpeed} m/s.`,
+    explanation: `המרחק הכולל ${distance} מטרים ב־${time} שניות → ${averageSpeed} m/s.`,
   };
 };
 
@@ -453,7 +497,7 @@ const xtConstantQuestion = () => {
       maxDistance: Math.max(startX, startX + distance),
       maxTime: time,
       xTicks: [0, time / 2, time],
-      yTicks: [0, Math.min(startX, startX + distance), Math.max(startX, startX + distance)],
+      yTicks: [Math.min(startX, startX + distance), Math.max(startX, startX + distance)],
     },
     prompt: "מה מהירות הגוף לפי שיפוע הגרף?",
     correctAnswer: { value: speed, unit: "m/s" },
@@ -597,7 +641,7 @@ const vtStopQuestion = () => {
       maxVelocity: initial,
       maxTime: duration,
       xTicks: [0, duration],
-      yTicks: [0, initial, finalSpeed],
+      yTicks: [0, initial],
     },
     prompt: "באיזה רגע הגוף נעצר?",
     correctAnswer: { value: stopTime, unit: "s" },
@@ -651,26 +695,30 @@ const footprintConstantQuestion = () => {
 };
 
 const footprintVariablePaceQuestion = () => {
-  const tickStep = randomInt(2, 3);
-  const timeGap = randomInt(1, 2);
-  const segmentDistances = [tickStep, tickStep * 2, tickStep * 3];
+  const segmentCount = randomInt(3, 5);
+  const timeGap = randomInt(1, 3);
+  const baseStep = randomInt(2, 4);
+  const segmentDistances = Array.from({ length: segmentCount }, () => baseStep * randomInt(1, 4));
   const steps = [{ time: 0, position: 0 }];
   segmentDistances.forEach((dist) => {
     const prev = steps[steps.length - 1];
     steps.push({ time: prev.time + timeGap, position: prev.position + dist });
   });
-  const avg = Number(((steps[steps.length - 1].position - steps[0].position) / (timeGap * (steps.length - 1))).toFixed(2));
+  const totalTime = timeGap * (steps.length - 1);
+  const totalDistance = steps[steps.length - 1].position - steps[0].position;
+  const avg = Number((totalDistance / totalTime).toFixed(2));
   const maxPos = steps[steps.length - 1].position;
+  const tickStep = baseStep * randomInt(1, 2);
   return {
     id: `footprint-var-${Date.now()}-${avg}`,
     representation: {
       type: "footprint",
       steps,
-      tickPositions: buildEvenTicks(maxPos, tickStep),
+      tickPositions: buildEvenTicks(maxPos, baseStep),
     },
     prompt: `מה המהירות הממוצעת? פער הזמן בין העקבות הוא ${timeGap} שניות.`,
     correctAnswer: { value: avg, unit: "m/s" },
-    explanation: `${maxPos} מ׳ ב־${timeGap * (steps.length - 1)} שניות → ${avg} m/s.`,
+    explanation: `הגוף עבר ${totalDistance} מ׳ ב־${totalTime} שניות, ולכן מהירותו היא ${avg} m/s.`,
   };
 };
 
@@ -695,6 +743,233 @@ const footprintDistanceQuestion = () => {
     prompt: "כמה מטרים נסע הגוף בסך הכל?",
     correctAnswer: { value: totalDistance, unit: "m" },
     explanation: `קדימה ${pace}, עוד ${2 * pace}, אחורה ${pace} → ${totalDistance} מ׳.`,
+  };
+};
+
+const xtEquationPositionQuestion = () => {
+  const velocity = (() => {
+    const val = randomInt(-6, 8);
+    return val === 0 ? 4 : val;
+  })();
+  const intercept = randomInt(-10, 10);
+  const sampleTime = randomInt(2, 6);
+  const position = Number((velocity * sampleTime + intercept).toFixed(2));
+  const equationText = formatEquation({ velocity, intercept });
+  return {
+    id: `xt-eq-pos-${Date.now()}-${position}`,
+    representation: buildEquationRepresentation(velocity, intercept),
+    prompt: `נתונה משוואת מיקום-זמן של גוף בתנועה קבועה. מה מיקום הגוף בזמן t=${sampleTime}s?`,
+    correctAnswer: { value: position, unit: "m" },
+    explanation: `${equationText} → x(${sampleTime}) = ${velocity}·${sampleTime} + ${intercept} = ${position} m.`,
+  };
+};
+
+const xtGraphEquationQuestion = () => {
+  const velocity = (() => {
+    const val = randomInt(-6, 7);
+    return val === 0 ? 5 : val;
+  })();
+  const intercept = randomInt(-5, 6);
+  const time = randomInt(3, 7);
+  const start = intercept;
+  const end = intercept + velocity * time;
+  const representation = {
+    type: "xt-graph",
+    points: [
+      { t: 0, x: start },
+      { t: time, x: end },
+    ],
+    minDistance: Math.min(start, end),
+    maxDistance: Math.max(start, end),
+    maxTime: time,
+    xTicks: [0, time / 2, time],
+    yTicks: [Math.min(start, end), Math.max(start, end)],
+  };
+  const correctOption = createEquationOption({ velocity, intercept, isCorrect: true });
+  const wrongSlope = createEquationOption({ velocity: velocity + randomChoice([2, -2, 3]), intercept });
+  const wrongIntercept = createEquationOption({ velocity, intercept: intercept + randomChoice([3, -3, 5]) });
+  const flipped = createEquationOption({ velocity: -velocity || velocity + 1, intercept });
+  const options = shuffle([correctOption, wrongSlope, wrongIntercept, flipped]);
+  return {
+    id: `xt-graph-eq-${Date.now()}-${velocity}`,
+    representation,
+    prompt: "לפי גרף x/t, איזו משוואה מתארת את התנועה?",
+    correctAnswer: { value: correctOption.text, unit: "equation", text: correctOption.text },
+    fixedOptions: options,
+    explanation: `שיפוע הגרף הוא ${velocity} m/s והחותך ${intercept} m → ${correctOption.text}.`,
+  };
+};
+
+const vtGraphPositionEquationQuestion = () => {
+  const velocity = randomInt(2, 7);
+  const duration = randomInt(4, 7);
+  const referenceTime = randomInt(2, duration);
+  const positionAtTime = randomInt(-6, 12);
+  const intercept = Number((positionAtTime - velocity * referenceTime).toFixed(2));
+  const representation = {
+    type: "vt-graph",
+    points: [
+      { t: 0, v: velocity },
+      { t: duration, v: velocity },
+    ],
+    minVelocity: 0,
+    maxVelocity: velocity + 2,
+    maxTime: duration,
+    xTicks: [0, duration],
+    yTicks: [velocity],
+  };
+  const correctOption = createEquationOption({ velocity, intercept, isCorrect: true });
+  const tooFast = createEquationOption({ velocity: velocity + randomInt(1, 3), intercept });
+  const tooSlow = createEquationOption({ velocity: Math.max(1, velocity - randomInt(1, 2)), intercept });
+  const wrongIntercept = createEquationOption({ velocity, intercept: intercept + randomChoice([3, -3, 5]) });
+  const options = shuffle([correctOption, tooFast, tooSlow, wrongIntercept]);
+  return {
+    id: `vt-graph-eq-${Date.now()}-${velocity}`,
+    representation,
+    prompt: `גרף v/t מראה תנועה קבועה. ידוע כי x=${positionAtTime}m בזמן t=${referenceTime} s. מה משוואת התנועה המתאימה?`,
+    correctAnswer: { value: correctOption.text, unit: "equation", text: correctOption.text },
+    fixedOptions: options,
+    explanation: `x(t) = ${velocity}·t + x₀, ובזמן ${referenceTime} מתקבל ${positionAtTime} → x₀=${intercept} → ${correctOption.text}.`,
+  };
+};
+
+const xtTableEquationQuestion = () => {
+  const velocity = (() => {
+    const val = randomInt(-5, 7);
+    return val === 0 ? 3 : val;
+  })();
+  const intercept = randomInt(-4, 6);
+  const times = randomTimes(4, [1, 1, 2]);
+  const rows = times.map((time) => [time.toString(), (intercept + velocity * time).toString()]);
+  const correctOption = createEquationOption({ velocity, intercept, isCorrect: true });
+  const shiftedStart = createEquationOption({ velocity, intercept: intercept + randomChoice([2, -2, 4]) });
+  const wrongSlope = createEquationOption({ velocity: velocity + randomChoice([2, -2]), intercept });
+  const mirrored = createEquationOption({ velocity: -velocity || velocity + 1, intercept });
+  const options = shuffle([correctOption, shiftedStart, wrongSlope, mirrored]);
+  return {
+    id: `xt-table-eq-${Date.now()}-${velocity}`,
+    representation: { type: "table", headers: ["t (s)", "x (m)"], rows },
+    prompt: "גוף נע במהירות קבועה כמתואר בטבלה. מה משוואת x(t) המתאימה לתנועת הגוף?",
+    correctAnswer: { value: correctOption.text, unit: "equation", text: correctOption.text },
+    fixedOptions: options,
+    explanation: `ההפרש בין כל שתי שורות קבוע: מהירות ${velocity} m/s והחותך ${intercept} m → ${correctOption.text}.`,
+  };
+};
+
+const footprintEquationQuestion = () => {
+  const timeGap = randomInt(1, 3);
+  const pace = randomInt(2, 5);
+  const start = randomInt(-3, 3);
+  const steps = Array.from({ length: 4 }, (_, idx) => ({
+    time: idx * timeGap,
+    position: start + pace * idx * timeGap,
+  }));
+  const maxPos = Math.max(...steps.map((s) => s.position));
+  const tickStep = pace * timeGap;
+  const correctOption = createEquationOption({ velocity: pace, intercept: start, isCorrect: true });
+  const faster = createEquationOption({ velocity: pace + 2, intercept: start });
+  const shifted = createEquationOption({ velocity: pace, intercept: start + randomChoice([3, -3]) });
+  const slower = createEquationOption({ velocity: pace - 1 || pace + 1, intercept: start });
+  const options = shuffle([correctOption, faster, shifted, slower]);
+  return {
+    id: `footprint-eq-${Date.now()}-${pace}`,
+    representation: {
+      type: "footprint",
+      steps,
+      tickPositions: steps.map((step) => step.position),
+    },
+    prompt: `בתרשים עקבות זה, העקבה הראשונה היא בזמן t=0s. פער הזמן בין כל שתי עקבות הוא ${timeGap} שניות. מהי משוואת x(t) המתאימה לתנועת הגוף?`,
+    correctAnswer: { value: correctOption.text, unit: "equation", text: correctOption.text },
+    fixedOptions: options,
+    explanation: `כל ${timeGap} שניות מתווספים ${pace * timeGap} מ׳ → מהירות ${pace} m/s והתחלה ב־${start} m → ${correctOption.text}.`,
+  };
+};
+
+const meetingEquationQuestion = () => {
+  const velocityA = randomInt(2, 3);
+  const interceptA = randomInt(-7, 7);
+  const meetTime = randomInt(3, 7);
+  const meetPosition = interceptA + velocityA * meetTime;
+  const maxTime = meetTime + randomInt(2, 4);
+  const representation = {
+    type: "xt-graph",
+    points: [
+      { t: 0, x: interceptA },
+      { t: maxTime, x: interceptA + velocityA * maxTime },
+    ],
+    minDistance: Math.min(interceptA, interceptA + velocityA * maxTime),
+    maxDistance: Math.max(interceptA, interceptA + velocityA * maxTime),
+    maxTime,
+    xTicks: [0, maxTime],
+    yTicks: [0, interceptA, interceptA + velocityA * maxTime],
+  };
+  const makeEquationOption = (velocity, intercept) =>
+    createEquationOption({ velocity, intercept });
+
+  const meetingOption = () => {
+    const v = randomChoice([randomInt(-3, 2), randomInt(3, 7)]);
+    const adjusted = v === 0 ? 1 : v;
+    const vel = adjusted === velocityA ? adjusted + 1 : adjusted;
+    const intercept = Number((meetPosition - vel * meetTime).toFixed(2));
+    return { option: makeEquationOption(vel, intercept), meets: true };
+  };
+  const nonMeetingOption = () => {
+    const v = randomChoice([randomInt(-3, 2), randomInt(3, 7)]);
+    const adjusted = v === 0 ? 2 : v;
+    const vel = adjusted === velocityA ? adjusted + 2 : adjusted;
+    const intercept = Number((meetPosition - vel * meetTime + randomChoice([3, -3, 5])).toFixed(2));
+    return { option: makeEquationOption(vel, intercept), meets: false };
+  };
+
+  const includeMultiple = Math.random() < 0.25;
+  const includeNone = Math.random() < 0.25;
+  let correctChoice = "equation";
+  if (includeMultiple && Math.random() < 0.2) {
+    correctChoice = "multiple";
+  } else if (includeNone && Math.random() < 0.2) {
+    correctChoice = "none";
+  }
+
+  const options = [];
+  const validA = meetingOption();
+  const validB = meetingOption();
+  const invalidA = nonMeetingOption();
+  const invalidB = nonMeetingOption();
+  const invalidC = nonMeetingOption();
+
+  if (correctChoice === "equation") {
+    validA.option.isCorrect = true;
+    options.push(validA.option, invalidA.option, invalidB.option, invalidC.option);
+  } else if (correctChoice === "multiple") {
+    options.push(validA.option, validB.option, invalidA.option);
+  } else {
+    options.push(invalidA.option, invalidB.option, makeEquationOption(velocityA, interceptA + 5));
+  }
+
+  if (includeMultiple) {
+    options.push({ value: "multiple", unit: "equation", text: "יש יותר מאפשרות אחת נכונה", isCorrect: correctChoice === "multiple" });
+  }
+  if (includeNone) {
+    options.push({ value: "none", unit: "equation", text: "אין תשובה מתאימה בין האפשרויות", isCorrect: correctChoice === "none" });
+  }
+
+  const finalOptions = shuffle(options);
+  const correctOption = finalOptions.find((opt) => opt.isCorrect);
+  const explanationBase = `בזמן t=${meetTime} הגוף הראשון ב־x=${meetPosition} m.`;
+  let explanation = `${explanationBase} משוואה שמגיעה לנקודה הזו: ${correctOption?.text || "—"}.`;
+  if (correctChoice === "multiple") {
+    explanation = `${explanationBase} יותר ממשוואה אחת עומדת בתנאי, ולכן האפשרות הנכונה היא "יש יותר מאפשרות אחת נכונה".`;
+  } else if (correctChoice === "none") {
+    explanation = `${explanationBase} אף אחת מהמשוואות המוצעות לא פוגשת בנקודה הזו, ולכן יש לבחור "אין תשובה מתאימה בין האפשרויות".`;
+  }
+
+  return {
+    id: `xt-meet-eq-${Date.now()}-${velocityA}`,
+    representation,
+    prompt: `נתון לפניכם גרף מקום-זמן של גוף A. גוף B נפגש עם גוף A בזמן t=${meetTime}s. איזו משוואה יכולה לתאר את גוף B?`,
+    correctAnswer: correctOption || { value: "none", unit: "equation", text: "אין תשובה מתאימה בין האפשרויות" },
+    fixedOptions: finalOptions,
+    explanation,
   };
 };
 
@@ -801,6 +1076,12 @@ const questionBuilders = [
   { builder: vtStopQuestion, type: "time" },
   { builder: vtAccelerationQuestion, type: "speed" },
   { builder: footprintConstantQuestion, type: "speed" },
+  { builder: xtEquationPositionQuestion, type: "distance" },
+  { builder: xtGraphEquationQuestion, type: "equation" },
+  { builder: vtGraphPositionEquationQuestion, type: "equation" },
+  { builder: xtTableEquationQuestion, type: "equation" },
+  { builder: footprintEquationQuestion, type: "equation" },
+  { builder: meetingEquationQuestion, type: "equation" },
   { builder: footprintVariablePaceQuestion, type: "speed" },
   { builder: dualVtSpeedQuestion, type: "speed" },
   { builder: dualVtDistanceQuestion, type: "distance" },
@@ -836,6 +1117,20 @@ const feedbackEl = document.getElementById("feedback");
 const submitBtn = document.getElementById("submit-answer");
 const correctCountEl = document.getElementById("correct-count");
 const streakEl = document.getElementById("streak-count");
+
+const typesetMath = (element, retries = 6) => {
+  if (!element || retries <= 0) return;
+  const mj = window.MathJax;
+  if (mj?.typesetPromise) {
+    mj.typesetPromise([element]).catch(() => {});
+    return;
+  }
+  if (typeof mj?.typeset === "function") {
+    mj.typeset([element]);
+    return;
+  }
+  setTimeout(() => typesetMath(element, retries - 1), 200);
+};
 
 const isTestMode = new URLSearchParams(window.location.search).has("test");
 
@@ -876,6 +1171,7 @@ const renderCurrentQuestion = () => {
   const question = currentQuestion;
   promptEl.textContent = question.prompt;
   representationEl.innerHTML = renderRepresentation(question.representation);
+  typesetMath(representationEl);
   optionsEl.innerHTML = `
     <div class="option-grid">
       ${question.options
@@ -889,6 +1185,7 @@ const renderCurrentQuestion = () => {
     </div>
     <div class="confirm-area" id="confirm-area"></div>
   `;
+  typesetMath(optionsEl);
   selectedOptionIndex = null;
   submitBtn.style.display = "none";
   document.querySelectorAll(".option-card").forEach((btn) => {
@@ -1060,6 +1357,23 @@ function renderVTGraph(data) {
       <text x="${padding - 5}" y="${padding - 10}" class="graph-label">${yLabel}</text>
       <text x="${width / 2}" y="${padding - 12}" class="graph-label" text-anchor="middle">גרף v־t</text>
     </svg>
+  `;
+}
+
+function renderEquationView(data) {
+  if (!data) return "<p>אין משוואה</p>";
+  const base = {
+    velocity: data.velocity,
+    intercept: data.intercept,
+    distanceLabel: data.distanceLabel || "m",
+    timeLabel: data.timeLabel || "s",
+  };
+  const eqText = formatEquation(base);
+  const latex = formatEquationLatex(base);
+  return `
+    <div class="equation-view">
+      <div class="eq-text">${latex ? `\\(${latex}\\)` : eqText}</div>
+    </div>
   `;
 }
 
@@ -1237,6 +1551,8 @@ function renderRepresentation(representation) {
       return renderXTGraph(representation);
     case "vt-graph":
       return renderVTGraph(representation);
+    case "xt-equation":
+      return renderEquationView(representation);
     case "footprint":
       return renderFootprint(representation);
     case "dual-xt":
